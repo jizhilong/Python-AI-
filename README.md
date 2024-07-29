@@ -1,19 +1,19 @@
-开发钉钉 AI 助理时，如果你的组织已经有成熟的大模型资源，可以考虑使用直通模式实现 AI 助理。直通模式下，钉钉内置 AI 既不参与技能路由也不主动生成回复，你的 AI 助理将直接接收用户输入，需要主动调用钉钉卡片生成回复。
+开发钉钉 AI 助理时，如果你已经有成熟的大模型资源，可以考虑使用直通模式实现 AI 助理。相比普通模式，直通模式下钉钉内置 AI 既不参与技能路由也不主动生成回复，你的 AI 助理将直接接收用户输入，主动调用钉钉卡片生成回复。
 
-本文展示了如何基于 dingtalk-stream python sdk 开发一个直通模式下的 AI 助理，并实现流式回复效果。为了避免概念混淆，先重申下三个关键词的含义：
+本文展示了如何基于 [dingtalk-stream-sdk-python](https://github.com/open-dingtalk/dingtalk-stream-sdk-python) 开发一个直通模式下的 AI 助理，并实现流式回复效果。为了避免概念混淆，先重申下三个关键词的含义：
 
-- **直通模式**: 用户向 AI 助理发送的所有语句，都会不经钉钉内置 AI 的处理，而是直接转发给自定义能力。
-- **stream 模式**: 应用通过 websocket 主动向钉钉轮询 AI 助理上需要处理的事件。与之对应的式 webhook 模式：开发者需要提供公网 HTTP 接口接收来自钉钉的事件。 
-- **流式回复**: 让 AI 助理以打字机样式呈现回复。注意这里的流式和前面提到的 stream 模式没有关系, 流式回复是关于回复展示效果的，stream 模式是关于你的程序和钉钉服务器的通讯链路的。
+- **直通模式**: 一种特殊的钉钉 AI 助理实现方式: 用户向 AI 助理发送的所有语句，都不经钉钉内置 AI 的处理，而是直达自定义能力实现程序。
+- **stream 模式**: 一种钉钉应用与钉钉服务器的通讯方式: 应用通过 websocket 主动向钉钉轮询 AI 助理上需要处理的事件。与之对应的式 webhook 模式：开发者需要提供公网 HTTP 接口接收来自钉钉的事件。 
+- **流式回复**: 一种钉钉回复的呈现形式：AI 助理产生的回复以打字机形式出现。注意这里的流式和前面提到的 stream 模式没有关系, 流式回复是关于回复展示效果的，stream 模式是关于你的程序和钉钉服务器的通讯链路的。
 
 ## 创建 AI 助理
 请参考官方文档创建[组织内AI助理](https://open.dingtalk.com/document/ai-dev/create-a-dingtalk-ai-assistant)，或者[市场AI助理](https://open.dingtalk.com/document/ai-dev/creative-dingtalk-ai-assistant)。
-两种 AI 助理的主要区别在于可用范围，前者只能在当前组织内使用，后者可以投放到市场上供其他组织使用。
+两种 AI 助理的主要区别在于可用范围，前者只能在当前组织内使用，后者可以投放到市场上供其他组织使用。本文介绍的直通模式开发对这两种助理都适用。
 
 首次开发，为了方便调试，建议尽可能减少非必要配置项。![](images/bare-assistant.jpg)
 
 ## 添加自定义能力
-自定义能力是直通模式下 AI 助理真正处理用户输入的地方。请参照[官方文档](https://open.dingtalk.com/document/ai-dev/development-guide-1)添加自定义能力，示例 yaml 如下, 其中的几个要点是：
+自定义能力是直通模式下 AI 助理真正接收用户输入的地方。请参照[官方文档](https://open.dingtalk.com/document/ai-dev/development-guide-1)添加自定义能力，示例 yaml 如下, 其中的几个要点是：
 
 1. `x-dingtalk-protocol: stream` 确保使用 stream 模式接收 AI 助理响应事件。该模式下， `servers/url` 可以随意填写。
 2. `x-dingtalk-display-result: disabled` 是为了屏蔽官方的结果卡片，仅展示自定义技能发送的卡片。
@@ -81,9 +81,9 @@ AI 助理编辑窗口并不存在一键开关“直通模式”的功能，为�
 4. API 没有需要大模型提参的参数（unionId, userInput 等通过 x-dingtalk-context 透传的参数没有问题）![](images/paramter-context.jpg)
 
 ## 为流式回复准备 AI 卡片
-"开启直通模式" 的第一点要求关闭“智能对话”，此时 AI 助理将不再提供智能回复，而是直接转发用户输入给自定义能力。为了让自定义能力可以生成流失回复，我们需要为其准备一个 AI 卡片模板。
+"开启直通模式" 的第一点要求关闭“智能对话”，此时 AI 助理将不再提供智能回复，而是直接将用户输入转发给自定义能力。为了生成流式回复，我们需要准备一个 AI 卡片模板。
 
-构建 AI 卡片模板的完整步骤请参考[官方文档](https://open.dingtalk.com/document/ai-dev/ai-card-template)，这里不再赘述。但笔者在实践过程中发现有几条注意事项值得强调：
+构建 AI 卡片模板的完整步骤请参考[官方文档](https://open.dingtalk.com/document/ai-dev/ai-card-template)，这里不赘述，但有几条注意事项值得强调：
 
 1. 流式组件应该添加在“输入中”状态。![](images/stream-component-edit.png)
 2. 流式组件中引用的变量，注意在“完成”状态也使用一个组件展示，否则输入完成后，打字结果就不见了。 ![](images/markdown-component-finished.png)
